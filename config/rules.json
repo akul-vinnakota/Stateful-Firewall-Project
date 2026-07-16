@@ -1,0 +1,35 @@
+{
+  "default_action": "block",
+  "rules": [
+    {
+      "name": "allow-internal-https",
+      "action": "allow",
+      "reason": "Authorized internal HTTPS traffic",
+      "src_cidr": "192.168.1.0/24",
+      "dst_cidr": "10.0.0.0/24",
+      "dst_port": 443,
+      "protocol": "TCP"
+    },
+    {
+      "name": "allow-dns",
+      "action": "allow",
+      "reason": "DNS requests are permitted",
+      "dst_port": 53,
+      "protocol": "UDP"
+    },
+    {
+      "name": "block-telnet",
+      "action": "block",
+      "reason": "Telnet sends traffic without modern encryption",
+      "dst_port": 23,
+      "protocol": "TCP"
+    },
+    {
+      "name": "block-smb",
+      "action": "block",
+      "reason": "SMB access is blocked by network policy",
+      "dst_port": 445,
+      "protocol": "TCP"
+    }
+  ]
+}
