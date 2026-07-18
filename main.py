@@ -1,6 +1,7 @@
 import json
 
 from firewall_engine.engine import FirewallEngine
+from firewall_engine.logging_utils import create_event, write_event
 from firewall_engine.models import Packet
 from firewall_engine.rules import load_rules
 
@@ -40,14 +41,19 @@ def main() -> None:
     for packet in sample_packets:
         decision = engine.evaluate(packet)
 
-        event = {
-            "five_tuple": packet.five_tuple,
-            "action": decision.action,
-            "rule": decision.rule_name,
-            "reason": decision.reason,
-        }
+        write_event(
+            packet,
+            decision,
+        )
 
-        print(json.dumps(event))
+        print(
+            json.dumps(
+                create_event(
+                    packet,
+                    decision,
+                )
+            )
+        )
 
 
 if __name__ == "__main__":
