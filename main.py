@@ -1,59 +1,117 @@
+from __future__ import annotations
+
+import argparse
 import json
+from collections import Counter
 
 from firewall_engine.engine import FirewallEngine
 from firewall_engine.logging_utils import create_event, write_event
-from firewall_engine.models import Packet
+from firewall_engine.pcap import load_pcap
 from firewall_engine.rules import load_rules
+from firewall_engine.simulator import TrafficSimulator
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run simulated traffic or replay a PCAP file "
+            "through the firewall engine."
+        )
+    )
+
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=20,
+        help="Number of simulated packets to generate.",
+    )
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional seed for repeatable simulated traffic.",
+    )
+
+    parser.add_argument(
+        "--pcap",
+        default=None,
+        help="Optional path to a PCAP file for offline replay.",
+    )
+
+    parser.add_argument(
+        "--rules",
+        default="config/rules.json",
+        help="Path to the firewall rules JSON file.",
+    )
+
+    parser.add_argument(
+        "--log",
+        default="logs/firewall-events.jsonl",
+        help="Path to the JSON Lines event log.",
+    )
+
+    return parser
 
 
 def main() -> None:
-    rules, default_action = load_rules("config/rules.json")
+    args = build_parser().parse_args()
+
+    rules, default_action = load_rules(args.rules)
 
     engine = FirewallEngine(
         rules=rules,
         default_action=default_action,
     )
 
-    sample_packets = [
-        Packet(
-            src_ip="192.168.1.25",
-            dst_ip="10.0.0.10",
-            src_port=51500,
-            dst_port=443,
-            protocol="TCP",
-        ),
-        Packet(
-            src_ip="172.16.0.50",
-            dst_ip="10.0.0.10",
-            src_port=52000,
-            dst_port=23,
-            protocol="TCP",
-        ),
-        Packet(
-            src_ip="172.16.0.50",
-            dst_ip="10.0.0.10",
-            src_port=53000,
-            dst_port=9999,
-            protocol="UDP",
-        ),
-    ]
+    if args.pcap:
+        packets = load_pcap(args.pcap)
+        traffic_mode = "pcap-replay"
+        traffic_source = args.pcap
+    else:
+        if args.count < 1:
+            raise SystemExit("--count must be at least 1")
 
-    for packet in sample_packets:
+        simulator = TrafficSimulator(seed=args.seed)
+        packets = simulator.generate_packets(args.count)
+        traffic_mode = "simulation"
+        traffic_source = f"seed={args.seed}"
+
+    action_counts: Counter[str] = Counter()
+    protocol_counts: Counter[str] = Counter()
+    matched_rules: Counter[str] = Counter()
+
+    for packet in packets:
         decision = engine.evaluate(packet)
 
+        action_counts[decision.action] += 1
+        protocol_counts[packet.protocol] += 1
+        matched_rules[decision.rule_name] += 1
+
         write_event(
-            packet,
-            decision,
+            packet=packet,
+            decision=decision,
+            log_path=args.log,
         )
 
         print(
             json.dumps(
-                create_event(
-                    packet,
-                    decision,
-                )
+                create_event(packet, decision)
             )
         )
+
+    summary = {
+        "mode": traffic_mode,
+        "source": traffic_source,
+        "packets_processed": len(packets),
+        "actions": dict(action_counts),
+        "protocols": dict(protocol_counts),
+        "matched_rules": dict(matched_rules),
+        "log_path": args.log,
+    }
+
+    print("\n=== Firewall Processing Summary ===")
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
