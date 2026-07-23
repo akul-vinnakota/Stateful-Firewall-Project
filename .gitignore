@@ -220,3 +220,7 @@ __marimo__/
 # Generated firewall event logs
 logs/
 *.jsonl
+
+# Generated packet captures
+captures/*.pcap
+captures/*.pcapng
